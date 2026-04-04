@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Assist — Live Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg      : #f5f5f0;
+      --surface : #ffffff;
+      --border  : #e0ddd4;
+      --text-1  : #1a1a18;
+      --text-2  : #6b6b65;
+      --text-3  : #9a9a92;
+      --blue    : #1a6bbf;
+      --blue-bg : #e8f1fb;
+      --green   : #2d7a3e;
+      --green-bg: #e6f4ea;
+      --amber   : #a06200;
+      --amber-bg: #fff4d6;
+      --red     : #b83232;
+      --red-bg  : #fceaea;
+      --purple  : #5a3eb8;
+      --purple-bg: #f0eeff;
+      --radius  : 10px;
+      --font    : -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg      : #111110;
+        --surface : #1c1c1a;
+        --border  : #2e2e2c;
+        --text-1  : #e8e6e0;
+        --text-2  : #a0a09a;
+        --text-3  : #6a6a64;
+        --blue-bg : #0d2540;
+        --green-bg: #0d2518;
+        --amber-bg: #2a1e00;
+        --red-bg  : #2a0d0d;
+        --purple-bg: #1e1540;
+      }
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text-1);
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ── Top bar ── */
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 20px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .topbar-title { font-size: 15px; font-weight: 600; }
+
+    .call-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.3s;
+    }
+    .call-badge.idle    { background: var(--border); color: var(--text-2); }
+    .call-badge.active  { background: var(--green-bg); color: var(--green); }
+    .call-badge.ended   { background: var(--red-bg); color: var(--red); }
+
+    .pulse {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(0.8)} }
+
+    .timer { font-size: 13px; color: var(--text-2); margin-left: auto; font-variant-numeric: tabular-nums; }
+
+    /* ── Layout ── */
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      grid-template-rows: auto 1fr;
+      gap: 12px;
+      padding: 16px;
+      max-width: 1280px;
+      margin: 0 auto;
+      height: calc(100vh - 52px);
+    }
+
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; grid-template-rows: auto; height: auto; }
+    }
+
+    /* ── Panel ── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .panel-icon {
+      width: 20px; height: 20px;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px;
+    }
+    .icon-blue   { background: var(--blue-bg);   color: var(--blue);   }
+    .icon-amber  { background: var(--amber-bg);  color: var(--amber);  }
+    .icon-green  { background: var(--green-bg);  color: var(--green);  }
+    .icon-purple { background: var(--purple-bg); color: var(--purple); }
+
+    .panel-body { flex: 1; overflow-y: auto; padding: 12px 16px; }
+
+    /* ── Transcript ── */
+    .transcript-panel { grid-row: 1 / 3; }
+
+    .transcript-line {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 14px;
+      animation: fadein 0.3s ease;
+    }
+    @keyframes fadein { from { opacity:0; transform: translateY(4px); } to { opacity:1; transform: none; } }
+
+    .speaker-avatar {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      font-size: 11px;
+      font-weight: 600;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .avatar-customer { background: var(--blue-bg);  color: var(--blue);  }
+    .avatar-agent    { background: var(--green-bg); color: var(--green); }
+
+    .line-content { flex: 1; }
+    .line-speaker { font-size: 11px; font-weight: 600; color: var(--text-2); margin-bottom: 2px; }
+    .line-text {
+      background: var(--bg);
+      border-radius: 6px 12px 12px 6px;
+      padding: 8px 12px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .customer .line-text { border-radius: 12px 12px 12px 4px; }
+    .line-time { font-size: 11px; color: var(--text-3); margin-top: 3px; }
+
+    .typing-indicator {
+      display: flex; gap: 4px; padding: 10px 14px;
+      background: var(--bg);
+      border-radius: 12px 12px 12px 4px;
+      width: fit-content;
+    }
+    .typing-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--text-3);
+      animation: typing 1.2s ease-in-out infinite;
+    }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typing { 0%,100%{opacity:.3;transform:translateY(0)} 50%{opacity:1;transform:translateY(-3px)} }
+
+    .empty-state {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 200px; color: var(--text-3); font-size: 13px; gap: 8px;
+    }
+    .empty-state-icon { font-size: 28px; }
+
+    /* ── Suggestions ── */
+    .suggestion-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      animation: fadein 0.3s ease;
+    }
+    .suggestion-card:hover { border-color: var(--blue); background: var(--blue-bg); }
+
+    .suggestion-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+
+    .suggestion-badge {
+      font-size: 10px; font-weight: 600;
+      padding: 2px 6px; border-radius: 4px;
+      text-transform: uppercase; letter-spacing: 0.03em;
+    }
+    .badge-action    { background: var(--blue-bg);   color: var(--blue);   }
+    .badge-kb_article{ background: var(--purple-bg); color: var(--purple); }
+    .badge-script    { background: var(--green-bg);  color: var(--green);  }
+    .badge-escalate  { background: var(--red-bg);    color: var(--red);    }
+
+    .urgency-dot {
+      width: 6px; height: 6px; border-radius: 50%; margin-left: auto;
+    }
+    .urgency-high   { background: var(--red);   }
+    .urgency-medium { background: var(--amber); }
+    .urgency-low    { background: var(--green); }
+
+    .suggestion-title  { font-size: 13px; font-weight: 600; }
+    .suggestion-detail { font-size: 12px; color: var(--text-2); margin-top: 3px; line-height: 1.4; }
+
+    /* ── CRM Fields ── */
+    .crm-field {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .crm-field:last-child { border-bottom: none; }
+    .crm-label { font-size: 11px; color: var(--text-2); font-weight: 500; width: 80px; flex-shrink: 0; padding-top: 1px; }
+    .crm-value { font-size: 13px; font-weight: 500; flex: 1; }
+    .crm-value.empty { color: var(--text-3); font-style: italic; font-weight: 400; }
+
+    .sentiment-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px; border-radius: 4px;
+      font-size: 12px; font-weight: 500;
+    }
+    .sent-positive  { background: var(--green-bg); color: var(--green); }
+    .sent-neutral   { background: var(--border);   color: var(--text-2);}
+    .sent-frustrated{ background: var(--amber-bg); color: var(--amber); }
+    .sent-angry     { background: var(--red-bg);   color: var(--red);   }
+
+    .entity-pill {
+      display: inline-flex; align-items: center; gap: 3px;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 4px; padding: 2px 8px;
+      font-size: 11px; margin: 2px 2px 2px 0;
+    }
+    .entity-key { color: var(--text-3); }
+
+    .summary-box {
+      background: var(--bg);
+      border-radius: 6px;
+      padding: 10px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--text-2);
+    }
+
+    /* ── Connection status ── */
+    .connection-status {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 6px 12px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .conn-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .conn-connected { background: var(--green); }
+    .conn-disconnected { background: var(--red); }
+  </style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<div class="topbar">
+  <div class="topbar-title">Agent Assist</div>
+  <div class="call-badge idle" id="call-badge">
+    <div class="pulse" style="display:none" id="pulse"></div>
+    <span id="call-status">No active call</span>
+  </div>
+  <div style="font-size:12px;color:var(--text-3)" id="conv-id"></div>
+  <div class="timer" id="timer" style="display:none">00:00</div>
+</div>
+
+<!-- Main Layout -->
+<div class="layout">
+
+  <!-- Left: Transcript -->
+  <div class="panel transcript-panel">
+    <div class="panel-header">
+      <div class="panel-icon icon-blue">💬</div>
+      Live Transcript
+      <span style="margin-left:auto;font-size:11px;font-weight:400;color:var(--text-3)" id="transcript-count">0 lines</span>
+    </div>
+    <div class="panel-body" id="transcript-body">
+      <div class="empty-state" id="empty-transcript">
+        <div class="empty-state-icon">🎧</div>
+        <div>Waiting for call to start...</div>
+        <div style="font-size:11px">Transcript will appear here in real time</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right column -->
+  <div style="display:flex;flex-direction:column;gap:12px;overflow:hidden;">
+
+    <!-- Suggestions -->
+    <div class="panel" style="flex:1;min-height:0">
+      <div class="panel-header">
+        <div class="panel-icon icon-amber">✨</div>
+        AI Suggestions
+        <span style="margin-left:auto;font-size:11px;font-weight:400;color:var(--text-3)" id="sugg-count">0</span>
+      </div>
+      <div class="panel-body" id="suggestions-body">
+        <div class="empty-state">
+          <div class="empty-state-icon">🤔</div>
+          <div style="font-size:12px">Suggestions appear as customer speaks</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CRM Auto-fill -->
+    <div class="panel" style="flex:1;min-height:0">
+      <div class="panel-header">
+        <div class="panel-icon icon-green">📋</div>
+        CRM Auto-fill
+      </div>
+      <div class="panel-body">
+        <div class="crm-field">
+          <div class="crm-label">Intent</div>
+          <div class="crm-value empty" id="crm-intent">—</div>
+        </div>
+        <div class="crm-field">
+          <div class="crm-label">Sentiment</div>
+          <div class="crm-value" id="crm-sentiment"><span class="sentiment-badge sent-neutral">Neutral</span></div>
+        </div>
+        <div class="crm-field">
+          <div class="crm-label">Entities</div>
+          <div class="crm-value empty" id="crm-entities">—</div>
+        </div>
+        <div class="crm-field" style="flex-direction:column;gap:6px;">
+          <div class="crm-label">Summary</div>
+          <div class="crm-value empty" id="crm-summary">Generated after call ends</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Connection status -->
+<div class="connection-status">
+  <div class="conn-dot conn-disconnected" id="conn-dot"></div>
+  <span id="conn-label">Connecting...</span>
+</div>
+
+<script>
+  // ─── Config ─────────────────────────────────────────────
+  const SERVER_WS = location.origin.replace(/^http/, "ws");
+  const convId    = new URLSearchParams(location.search).get("conversationId") || "default";
+
+  document.getElementById("conv-id").textContent = `ID: ${convId.slice(0, 8)}...`;
+
+  // ─── State ──────────────────────────────────────────────
+  let transcriptLines = 0;
+  let callStartTime   = null;
+  let timerInterval   = null;
+
+  // ─── WebSocket ──────────────────────────────────────────
+  let ws;
+  function connect() {
+    ws = new WebSocket(`${SERVER_WS}/agent-ui?conversationId=${convId}`);
+
+    ws.onopen = () => {
+      setConnected(true);
+    };
+
+    ws.onmessage = (evt) => {
+      const msg = JSON.parse(evt.data);
+      handleMessage(msg);
+    };
+
+    ws.onclose = () => {
+      setConnected(false);
+      setTimeout(connect, 3000);  // auto-reconnect
+    };
+
+    ws.onerror = () => setConnected(false);
+  }
+
+  function setConnected(v) {
+    document.getElementById("conn-dot").className  = `conn-dot ${v ? "conn-connected" : "conn-disconnected"}`;
+    document.getElementById("conn-label").textContent = v ? "Connected" : "Reconnecting...";
+  }
+
+  // ─── Message handlers ───────────────────────────────────
+  function handleMessage(msg) {
+    switch (msg.type) {
+
+      case "call_started":
+        startCall(msg.data);
+        break;
+
+      case "call_ended":
+        endCall();
+        break;
+
+      case "transcript_line":
+        addTranscriptLine(msg.data);
+        break;
+
+      case "suggestions":
+        renderSuggestions(msg.data);
+        break;
+
+      case "crm_update":
+        updateCRM(msg.data);
+        break;
+
+      case "call_summary":
+        showSummary(msg.data);
+        break;
+
+      case "session_state":
+        // Restore existing session state (e.g. agent refreshes page mid-call)
+        if (msg.data) {
+          msg.data.transcript?.forEach(l => addTranscriptLine(l, false));
+          if (msg.data.suggestions?.length) renderSuggestions(msg.data.suggestions);
+          if (msg.data.crmFields) updateCRM(msg.data.crmFields);
+        }
+        break;
+    }
+  }
+
+  // ─── Call lifecycle ─────────────────────────────────────
+  function startCall(data) {
+    callStartTime = Date.now();
+    document.getElementById("call-badge").className = "call-badge active";
+    document.getElementById("call-status").textContent = "Call in progress";
+    document.getElementById("pulse").style.display = "block";
+    document.getElementById("timer").style.display  = "block";
+    document.getElementById("empty-transcript").style.display = "none";
+
+    timerInterval = setInterval(() => {
+      const s = Math.floor((Date.now() - callStartTime) / 1000);
+      const mm = String(Math.floor(s / 60)).padStart(2, "0");
+      const ss = String(s % 60).padStart(2, "0");
+      document.getElementById("timer").textContent = `${mm}:${ss}`;
+    }, 1000);
+  }
+
+  function endCall() {
+    clearInterval(timerInterval);
+    document.getElementById("call-badge").className = "call-badge ended";
+    document.getElementById("call-status").textContent = "Call ended";
+    document.getElementById("pulse").style.display = "none";
+  }
+
+  // ─── Transcript ─────────────────────────────────────────
+  function addTranscriptLine(line, scroll = true) {
+    transcriptLines++;
+    document.getElementById("transcript-count").textContent = `${transcriptLines} lines`;
+
+    const body      = document.getElementById("transcript-body");
+    const isCustomer = line.speaker === "customer";
+    const time       = new Date(line.timestamp || Date.now()).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", second:"2-digit" });
+
+    const el = document.createElement("div");
+    el.className = `transcript-line ${line.speaker}`;
+    el.innerHTML = `
+      <div class="speaker-avatar ${isCustomer ? "avatar-customer" : "avatar-agent"}">
+        ${isCustomer ? "CX" : "AG"}
+      </div>
+      <div class="line-content">
+        <div class="line-speaker">${isCustomer ? "Customer" : "Agent"}</div>
+        <div class="line-text">${escHtml(line.text)}</div>
+        <div class="line-time">${time}</div>
+      </div>
+    `;
+    body.appendChild(el);
+    if (scroll) body.scrollTop = body.scrollHeight;
+  }
+
+  // ─── Suggestions ────────────────────────────────────────
+  function renderSuggestions(suggestions) {
+    const body = document.getElementById("suggestions-body");
+    document.getElementById("sugg-count").textContent = suggestions.length;
+
+    body.innerHTML = "";
+    suggestions.forEach(s => {
+      const card = document.createElement("div");
+      card.className = "suggestion-card";
+      card.innerHTML = `
+        <div class="suggestion-header">
+          <span class="suggestion-badge badge-${s.type}">${s.type.replace("_", " ")}</span>
+          ${s.urgency ? `<div class="urgency-dot urgency-${s.urgency}" title="Urgency: ${s.urgency}"></div>` : ""}
+        </div>
+        <div class="suggestion-title">${escHtml(s.title)}</div>
+        ${s.detail ? `<div class="suggestion-detail">${escHtml(s.detail)}</div>` : ""}
+      `;
+      card.onclick = () => card.style.opacity = "0.5";  // mark as used
+      body.appendChild(card);
+    });
+  }
+
+  // ─── CRM ────────────────────────────────────────────────
+  function updateCRM(fields) {
+    if (fields.intent) {
+      const el = document.getElementById("crm-intent");
+      el.textContent = fields.intent;
+      el.className   = "crm-value";
+    }
+
+    if (fields.sentiment) {
+      const sentMap = {
+        positive  : "sent-positive",
+        neutral   : "sent-neutral",
+        frustrated: "sent-frustrated",
+        angry     : "sent-angry",
+      };
+      const sentEmoji = { positive:"😊", neutral:"😐", frustrated:"😤", angry:"😠" };
+      document.getElementById("crm-sentiment").innerHTML =
+        `<span class="sentiment-badge ${sentMap[fields.sentiment] || "sent-neutral"}">
+          ${sentEmoji[fields.sentiment] || ""} ${fields.sentiment}
+        </span>`;
+    }
+
+    if (fields.entities && Object.keys(fields.entities).length) {
+      const el = document.getElementById("crm-entities");
+      el.className = "crm-value";
+      el.innerHTML = Object.entries(fields.entities)
+        .map(([k, v]) => `<span class="entity-pill"><span class="entity-key">${k}:</span> ${escHtml(v)}</span>`)
+        .join(" ");
+    }
+  }
+
+  function showSummary(data) {
+    endCall();
+    if (data.summary) {
+      const el = document.getElementById("crm-summary");
+      el.className = "crm-value";
+      el.innerHTML = `<div class="summary-box">${escHtml(data.summary)}</div>`;
+    }
+    if (data.crmFields) updateCRM(data.crmFields);
+  }
+
+  // ─── Utils ──────────────────────────────────────────────
+  function escHtml(str) {
+    return (str || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  // ─── Start ──────────────────────────────────────────────
+  connect();
+</script>
+</body>
+</html>

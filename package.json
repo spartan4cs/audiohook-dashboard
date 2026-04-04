@@ -1,0 +1,19 @@
+{
+  "name": "genesys-gemini-agent-assist",
+  "version": "1.0.0",
+  "description": "Real-time Agent Assist: Genesys AudioHook + Gemini Live → Live Transcript + AI Suggestions + CRM Auto-fill",
+  "main": "server.js",
+  "engines": { "node": ">=18.0.0" },
+  "scripts": {
+    "start": "node server.js",
+    "dev"  : "nodemon server.js"
+  },
+  "dependencies": {
+    "@google/genai": "^0.7.0",
+    "dotenv"       : "^16.4.0",
+    "ws"           : "^8.17.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
