@@ -141,7 +141,7 @@ async function connectGemini(session) {
   const sid = session.id.slice(0, 8);
   try {
     const liveSession = await genai.live.connect({
-      model : config.GEMINI_MODEL,   // e.g. "gemini-2.0-flash-live-001"
+      model : config.GEMINI_MODEL,
       config: {
         responseModalities      : [Modality.TEXT],
         systemInstruction       : { parts: [{ text: SYSTEM_PROMPT }] },
@@ -150,9 +150,12 @@ async function connectGemini(session) {
         tools                   : [AGENT_ASSIST_TOOL],
       },
       callbacks: {
-        onopen   : ()    => _onOpen(session),
+        onopen   : ()    => {
+          session.geminiReady = true;
+          _onOpen(session);
+        },
         onmessage: (msg) => _onMessage(session, msg),
-        onerror  : (err) => logger.error("Gemini error", { sid, error: err?.message }),
+        onerror  : (err) => logger.error("Gemini error", { sid, errorId: err?.id, error: err?.message, details: err }),
         onclose  : ()    => { session.geminiReady = false; logger.info("Gemini closed", { sid }); },
       },
     });
@@ -175,11 +178,12 @@ async function connectGemini(session) {
 function sendAudio(session, pcm16Buffer) {
   if (!session.geminiSession || !session.geminiReady) return;
   try {
+    // Trying 'media' key as suggested by the error "Media is required."
     session.geminiSession.sendRealtimeInput({
-      audio: {
-        data    : pcm16Buffer.toString("base64"),
+      media: [{
         mimeType: "audio/pcm;rate=16000",
-      },
+        data: pcm16Buffer.toString("base64")
+      }]
     });
   } catch (err) {
     logger.error("sendRealtimeInput failed", { sid: session.id.slice(0, 8), error: err.message });
@@ -224,11 +228,22 @@ async function generateSummary(session) {
 // ──────────────────────────────────────────────────────────────────────────────
 //  Internal callbacks
 // ──────────────────────────────────────────────────────────────────────────────
-function _onOpen(session) {
+async function _onOpen(session) {
   const sid = session.id.slice(0, 8);
-  logger.info("Gemini ready — flushing audio buffer", { sid, buffered: session.audioBuffer.length });
-  session.geminiReady = true;
+  
+  // Wait up to 2s for geminiSession to be assigned by the caller (race condition fix)
+  let attempts = 0;
+  while (!session.geminiSession && attempts < 20) {
+    await new Promise(r => setTimeout(r, 100));
+    attempts++;
+  }
 
+  if (!session.geminiSession) {
+    logger.error("Gemini session never initialized (timeout)", { sid });
+    return;
+  }
+
+  logger.info("Gemini ready — flushing audio buffer", { sid, buffered: session.audioBuffer.length });
   for (const chunk of session.audioBuffer) sendAudio(session, chunk);
   session.audioBuffer = [];
 }

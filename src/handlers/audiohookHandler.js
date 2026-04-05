@@ -66,6 +66,24 @@ function _createSession(ws) {
 
 const _sid = (s) => s.id.slice(0, 8);
 
+/**
+ * Build a properly-framed Genesys AudioHook response.
+ *
+ * Genesys protocol seq semantics:
+ *   seq      (in our response)  = OUR OWN incrementing counter (not echoed)
+ *   clientseq (in our response) = echo of the client's seq from their request
+ *   serverseq is sent BY THE CLIENT to ack our last seq — we do NOT send it
+ */
+function _reply(session, inMsg, fields) {
+  session._serverseq = (session._serverseq || 0) + 1;
+  return {
+    version  : "2",
+    id       : inMsg.id,            // echo the request id
+    seq      : session._serverseq,  // OUR own counter (1, 2, 3…)
+    clientseq: inMsg.seq,           // REQUIRED: echo of client's seq
+    ...fields,
+  };
+}
 // ── Control message dispatch ──────────────────────────────────────────────────
 function _handleControl(session, raw) {
   let msg;
@@ -75,7 +93,7 @@ function _handleControl(session, raw) {
 
   switch (msg.type) {
     case "probe":
-      session.send({ type: "probe" });
+      session.send(_reply(session, msg, { type: "probe" }));
       break;
 
     case "open":
@@ -85,29 +103,48 @@ function _handleControl(session, raw) {
       break;
 
     case "ping":
-      session.send({ type: "pong", seq: msg.seq, clientseq: msg.seq });
+      session.send(_reply(session, msg, { type: "pong" }));
       break;
 
     case "pause":
+    case "paused":
       session.state = "paused";
-      session.send({ type: "paused", seq: msg.seq });
+      if (msg.type === "pause") {
+        session.send(_reply(session, msg, { type: "paused" }));
+      }
       logger.info("Session paused", { sid });
       break;
 
     case "resume":
+    case "resumed":
       session.state = "open";
-      session.send({ type: "resumed", seq: msg.seq });
+      if (msg.type === "resume") {
+        session.send(_reply(session, msg, { type: "resumed" }));
+      }
       logger.info("Session resumed", { sid });
       break;
 
     case "close":
       session.state = "closing";
-      session.send({ type: "closed", seq: msg.seq });
+      session.send(_reply(session, msg, { type: "closed" }));
       _finalise(session);
       break;
 
+    case "error":
+      logger.warn("Genesys error", { sid, code: msg.parameters?.code, message: msg.parameters?.message });
+      break;
+
+    case "disconnect":
+      logger.info("Genesys disconnect", { sid });
+      session.state = "closing";
+      break;
+
+    case "info":
+      logger.debug("Genesys info", { sid, raw: msg });
+      break;
+
     default:
-      logger.warn("Unknown control message", { sid, type: msg.type });
+      logger.warn("Unknown control message", { sid, type: msg.type, raw: msg });
   }
 }
 
@@ -133,7 +170,14 @@ async function _handleOpen(session, msg) {
   session.mediaFormat = selected;
   session.state       = "open";
 
-  session.send({ type: "opened", seq: msg.seq, parameters: { media: [selected] } });
+  // Genesys requires version, id (echoed), clientseq, serverseq, and startPaused
+  session.send(_reply(session, msg, {
+    type      : "opened",
+    parameters: {
+      media      : [selected],
+      startPaused: false,
+    },
+  }));
   logger.info("Session opened", { sid, conversationId: session.conversationId, format: selected.format });
 
   // Notify any waiting Agent UI browsers
@@ -161,6 +205,10 @@ function _handleAudio(session, data) {
 
 // ── Finalise ──────────────────────────────────────────────────────────────────
 function _finalise(session) {
+  // Guard: ws.on("close") and protocol "close" message can both fire — only run once
+  if (session.state === "finalized") return;
+  session.state = "finalized";
+
   const sid = _sid(session);
   logger.info("Finalising session", { sid, transcriptLines: session.transcript.length });
 
