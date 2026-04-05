@@ -1,0 +1,17 @@
+# .dockerignore — exclude files not needed in the Docker image
+node_modules
+npm-debug.log*
+.env
+.env.*
+.git
+.gitignore
+.DS_Store
+*.test.js
+*.spec.js
+coverage/
+.nyc_output/
+README.md
+Dockerfile
+.dockerignore
+cloudbuild.yaml
+*.md
